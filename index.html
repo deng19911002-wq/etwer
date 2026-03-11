@@ -1,4 +1,4 @@
-<!-- sign.html（在线签字页） -->
+<!-- sign.html（在线签字页）- 已修复用户ID问题 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -25,11 +25,18 @@
       margin: 0 5px;
       cursor: pointer;
     }
+    .user-id-input {
+      margin: 10px 0;
+      padding: 8px;
+      width: 80%;
+    }
   </style>
 </head>
 <body>
   <div class="signature-container">
     <h3>飞书在线签字面板</h3>
+    <!-- 新增：用户ID输入框，解决为空问题 -->
+    <input type="text" class="user-id-input" id="userIdInput" placeholder="请输入你的用户ID（必填）">
     <canvas id="signatureCanvas"></canvas>
     <div class="btn-group">
       <button id="clearBtn">清空签名</button>
@@ -38,16 +45,26 @@
   </div>
 
   <script>
-    // 1. 获取URL参数（用户ID）
+    // 1. 初始化变量（不再强制依赖URL参数）
+    let userId = '';
+    const userIdInput = document.getElementById('userIdInput');
+    
+    // 优先读取URL参数，填充到输入框
     function getUrlParam(name) {
       const reg = new RegExp(`(^|&)${name}=([^&]*)(&|$)`);
       const r = window.location.search.substr(1).match(reg);
       return r ? decodeURIComponent(r[2]) : '';
     }
-    const userId = getUrlParam('userId');
-    if (!userId) {
-      alert('用户ID为空，无法提交签名！');
+    const urlUserId = getUrlParam('userId');
+    if (urlUserId) {
+      userIdInput.value = urlUserId;
+      userId = urlUserId;
     }
+
+    // 监听输入框变化，实时更新userId
+    userIdInput.addEventListener('input', (e) => {
+      userId = e.target.value.trim();
+    });
 
     // 2. 初始化Canvas签字板
     const canvas = document.getElementById('signatureCanvas');
@@ -131,12 +148,20 @@
       points = [];
     });
 
-    // 5. 保存并提交签名
+    // 5. 保存并提交签名（优化校验逻辑）
     document.getElementById('saveBtn').addEventListener('click', async () => {
+      // 先校验用户ID
+      if (!userId) {
+        alert('请先输入你的用户ID！');
+        userIdInput.focus(); // 自动聚焦到输入框
+        return;
+      }
+      // 校验是否签字
       if (points.length === 0) {
         alert('请先完成签字！');
         return;
       }
+      
       // 转Base64图片（用于显示）
       const pngBase64 = canvas.toDataURL('image/png', 0.8);
       // 转矢量轨迹（JSON）
@@ -158,9 +183,11 @@
         const data = await res.json();
         if (data.code === 0) {
           alert('签字成功！签名已保存到飞书多维表格');
-          // 清空签名
+          // 清空签名和输入框
           ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
           points = [];
+          userIdInput.value = '';
+          userId = '';
         } else {
           alert('签字失败：' + data.msg);
         }
