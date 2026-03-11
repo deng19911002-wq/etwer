@@ -1,0 +1,177 @@
+<!-- sign.html（在线签字页） -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>飞书在线签字</title>
+  <style>
+    .signature-container {
+      width: 400px;
+      margin: 20px auto;
+      text-align: center;
+    }
+    #signatureCanvas {
+      border: 2px solid #ccc;
+      width: 100%;
+      height: 200px;
+      cursor: crosshair;
+    }
+    .btn-group {
+      margin-top: 10px;
+    }
+    button {
+      padding: 8px 20px;
+      margin: 0 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="signature-container">
+    <h3>飞书在线签字面板</h3>
+    <canvas id="signatureCanvas"></canvas>
+    <div class="btn-group">
+      <button id="clearBtn">清空签名</button>
+      <button id="saveBtn">确认签字并提交</button>
+    </div>
+  </div>
+
+  <script>
+    // 1. 获取URL参数（用户ID）
+    function getUrlParam(name) {
+      const reg = new RegExp(`(^|&)${name}=([^&]*)(&|$)`);
+      const r = window.location.search.substr(1).match(reg);
+      return r ? decodeURIComponent(r[2]) : '';
+    }
+    const userId = getUrlParam('userId');
+    if (!userId) {
+      alert('用户ID为空，无法提交签名！');
+    }
+
+    // 2. 初始化Canvas签字板
+    const canvas = document.getElementById('signatureCanvas');
+    const ctx = canvas.getContext('2d');
+    // 适配高清屏
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = canvas.offsetHeight * dpr;
+    ctx.scale(dpr, dpr);
+    // 签字样式
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000';
+
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    let points = []; // 存储矢量轨迹
+
+    // 3. 手写签字事件（兼容鼠标/触屏）
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', drawing);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseleave', stopDraw);
+    // 触屏适配
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      startDraw({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        target: canvas,
+        getBoundingClientRect: () => rect
+      });
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      drawing({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        target: canvas,
+        getBoundingClientRect: () => rect
+      });
+    });
+    canvas.addEventListener('touchend', stopDraw);
+
+    function startDraw(e) {
+      isDrawing = true;
+      const rect = e.target.getBoundingClientRect();
+      lastX = (e.clientX - rect.left) / rect.width * canvas.offsetWidth;
+      lastY = (e.clientY - rect.top) / rect.height * canvas.offsetHeight;
+      points.push({ x: lastX, y: lastY });
+    }
+
+    function drawing(e) {
+      if (!isDrawing) return;
+      const rect = e.target.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width * canvas.offsetWidth;
+      const y = (e.clientY - rect.top) / rect.height * canvas.offsetHeight;
+      
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      
+      lastX = x;
+      lastY = y;
+      points.push({ x, y });
+    }
+
+    function stopDraw() {
+      isDrawing = false;
+    }
+
+    // 4. 清空签名
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+      points = [];
+    });
+
+    // 5. 保存并提交签名
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      if (points.length === 0) {
+        alert('请先完成签字！');
+        return;
+      }
+      // 转Base64图片（用于显示）
+      const pngBase64 = canvas.toDataURL('image/png', 0.8);
+      // 转矢量轨迹（JSON）
+      const vectorData = JSON.stringify(points);
+
+      try {
+        // 提交到飞书AI技能后端（替换为你的飞书技能接口地址）
+        const res = await fetch('https://你的飞书AI技能域名/save-signature', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userId,
+            png: pngBase64,
+            vector: vectorData
+          })
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          alert('签字成功！签名已保存到飞书多维表格');
+          // 清空签名
+          ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+          points = [];
+        } else {
+          alert('签字失败：' + data.msg);
+        }
+      } catch (err) {
+        console.error('提交签名失败：', err);
+        alert('网络错误，提交失败！');
+      }
+    });
+
+    // 初始化清空画布
+    ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+  </script>
+</body>
+</html>
